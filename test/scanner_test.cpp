@@ -27,6 +27,5 @@ TEST(MnemosyneTests, ScannerTest) {
     mnem::scanner scanner{ range };
 
     auto result = scanner.scan_signature(mnem::make_signature<"3A 5 ?? 71">());
-    size_t idx = reinterpret_cast<uint8_t*>(result) - bytes;
-    ASSERT_EQ(idx, 11);
+    ASSERT_EQ(result, reinterpret_cast<std::byte*>(bytes) + 11);
 }

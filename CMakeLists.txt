@@ -3,7 +3,11 @@ project(mnemosyne)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(mnemosyne include/mnemosyne/core/memory_range.hpp include/mnemosyne/scan/signature.hpp include/mnemosyne/internal/string_literal.hpp include/mnemosyne/scan/scanner.hpp src/mnemosyne.cpp)
+add_library(mnemosyne include/mnemosyne/core/memory_range.hpp include/mnemosyne/scan/signature.hpp include/mnemosyne/internal/string_literal.hpp include/mnemosyne/scan/scanner.hpp src/mnemosyne.cpp include/mnemosyne/mem/process.hpp)
+
+if (WIN32)
+    target_sources(mnemosyne PRIVATE src/os/win32/process.cpp)
+endif()
 
 add_subdirectory(test)
 

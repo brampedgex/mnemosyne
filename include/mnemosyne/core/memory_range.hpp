@@ -3,6 +3,10 @@
 #define MNEMOSYNE_CORE_MEMORY_RANGE_HPP
 
 #include <cstddef>
+#include <span>
+#include <concepts>
+#include <ranges>
+#include <array>
 
 namespace mnem {
     namespace internal {

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef MNEMOSYNE_SCAN_SCANNER_HPP
 #define MNEMOSYNE_SCAN_SCANNER_HPP
 

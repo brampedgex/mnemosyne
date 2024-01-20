@@ -27,7 +27,6 @@ TEST(MnemosyneTests, SignatureTest) {
         static constexpr auto sig2 = "1 2? ?4 ? ?? 9A BCDE F"_sig;
         auto& c = sig2.container();
 
-        // FIXME: Super ugly, don't know another way to do this
         ASSERT_EQ(c[0].byte(), std::byte{0x01});
         ASSERT_EQ(c[0].mask(), std::byte{0xFF});
         ASSERT_EQ(c[1].byte(), std::byte{0x20});

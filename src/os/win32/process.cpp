@@ -8,7 +8,7 @@
 
 #include <mnemosyne/mem/process.hpp>
 
-auto mnem::proc_module::get_memory_range() -> memory_span {
+auto mnem::proc_module::get_memory_range() const -> memory_span {
     auto mod = reinterpret_cast<HMODULE>(this->ptr);
 
     MODULEINFO info{};
@@ -17,7 +17,7 @@ auto mnem::proc_module::get_memory_range() -> memory_span {
     return memory_span{ reinterpret_cast<std::byte*>(info.lpBaseOfDll), info.SizeOfImage };
 }
 
-auto mnem::proc_module::get_section_range(std::string_view name) -> std::optional<memory_span> {
+auto mnem::proc_module::get_section_range(std::string_view name) const -> std::optional<memory_span> {
     IMAGE_NT_HEADERS* ntHeaders = ImageNtHeader(this->ptr);
 
     auto sectionHeader = reinterpret_cast<IMAGE_SECTION_HEADER*>(ntHeaders + 1);
@@ -36,6 +36,7 @@ auto mnem::get_main_proc_module() -> proc_module {
     return { GetModuleHandleA(nullptr) };
 }
 
-auto mnem::get_proc_module(const std::string& name) -> proc_module {
-    return { GetModuleHandleA(name.c_str()) };
+auto mnem::get_proc_module(const std::string& name) -> std::optional<proc_module> {
+    auto handle = GetModuleHandleA(name.c_str());
+    return handle ? std::make_optional(proc_module{ handle }) : std::nullopt;
 }

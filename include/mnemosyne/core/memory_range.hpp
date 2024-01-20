@@ -5,30 +5,46 @@
 #include <cstddef>
 
 namespace mnem {
-    /// Represents a range in memory.
-    class memory_range {
-    public:
-        constexpr memory_range(std::byte* begin, std::byte* end) noexcept : begin_(begin), end_(end) {}
-        constexpr memory_range(std::byte* begin, std::size_t size) noexcept : begin_(begin), end_(begin + size) {}
+    namespace internal {
+        template <class T>
+        concept contiguous_byte_range = std::ranges::contiguous_range<T> && std::same_as<std::remove_cvref_t<std::ranges::range_reference_t<T>>, std::byte>;
+    }
 
-        [[nodiscard]] auto* begin() const noexcept { return begin_; }
-        [[nodiscard]] auto* end() const noexcept { return end_; }
+    template <class T>
+    concept memory_range = std::copyable<T>
+            && std::ranges::range<T>
+            && internal::contiguous_byte_range<std::remove_reference_t<std::ranges::range_reference_t<T>>>;
+
+    template <memory_range T>
+    using memory_range_element_t = std::remove_reference_t<std::ranges::range_reference_t<std::ranges::range_reference_t<T>>>;
+
+    /// Represents a range in memory.
+    class memory_span {
+    public:
+        constexpr memory_span(std::byte* begin, std::size_t size) noexcept : dumb_array_({{ begin, size }}) {}
+
+        [[nodiscard]] auto span() const noexcept { return dumb_array_[0]; }
+
+        [[nodiscard]] auto begin() const noexcept { return dumb_array_.begin(); }
+        [[nodiscard]] auto end() const noexcept { return dumb_array_.end(); }
 
     private:
-        std::byte *begin_, *end_;
+        // TODO: this is a severely stupid hack so i don't need to make a custom iterator, but i will do it properly eventually
+        std::array<std::span<std::byte>, 1> dumb_array_;
     };
 
-    class const_memory_range {
+    class const_memory_span {
     public:
-        constexpr const_memory_range(const std::byte* begin, const std::byte* end) noexcept : begin_(begin), end_(end) {}
-        constexpr const_memory_range(const std::byte* begin, std::size_t size) noexcept : begin_(begin), end_(begin + size) {}
-        constexpr const_memory_range(const memory_range& range) noexcept : begin_(range.begin()), end_(range.end()) {} // NOLINT(google-explicit-constructor)
+        constexpr const_memory_span(const std::byte* begin, std::size_t size) noexcept : dumb_array_({{ begin, size }}) {}
+        constexpr const_memory_span(const memory_span& range) noexcept : dumb_array_({ range.span() }) {} // NOLINT(google-explicit-constructor)
 
-        [[nodiscard]] auto* begin() const noexcept { return begin_; }
-        [[nodiscard]] auto* end() const noexcept { return end_; }
+        [[nodiscard]] auto span() const noexcept { return dumb_array_[0]; }
+
+        [[nodiscard]] auto begin() noexcept { return dumb_array_.begin(); }
+        [[nodiscard]] auto end() noexcept { return dumb_array_.end(); }
 
     private:
-        const std::byte *begin_, *end_;
+        std::array<std::span<const std::byte>, 1> dumb_array_;
     };
 }
 

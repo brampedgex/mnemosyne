@@ -23,7 +23,7 @@ uint8_t bytes[] = {
 };
 
 TEST(MnemosyneTests, ScannerTest) {
-    mnem::memory_range range{ reinterpret_cast<std::byte*>(bytes), reinterpret_cast<std::byte*>(&bytes[18]) };
+    mnem::memory_span range{ reinterpret_cast<std::byte*>(bytes), 18 };
     mnem::scanner scanner{ range };
 
     auto result = scanner.scan_signature(mnem::make_signature<"3A 5 ?? 71">());

@@ -15,26 +15,30 @@ namespace mnem {
     // TODO: Scan for scalar types and simple byte arrays
     // TODO: Result type instead of uintptr_t
 
-    template <std::copyable Range = const_memory_range>
+    template <memory_range Range = const_memory_span>
     class scanner {
     public:
         explicit scanner(Range range) noexcept : range_(std::move(range)) {}
 
-        [[nodiscard]] auto* scan_signature(signature sig) const noexcept {
+        [[nodiscard]] memory_range_element_t<Range>* scan_signature(signature sig) const noexcept {
             // TODO: SIMD-based methods, which will be ez to make since we only support x86/64
-            auto res = std::search(
-                    std::execution::par_unseq,
-                    range_.begin(), range_.end(),
-                    sig.begin(), sig.end());
 
-            if (res == range_.end())
-                return decltype(res){nullptr};
-            else
-                return res;
+            for (auto& i : range_) {
+                auto result =
+                        std::search(
+                            std::execution::par_unseq,
+                            i.begin(), i.end(),
+                            sig.begin(), sig.end());
+
+                if (result != i.end())
+                    return std::to_address(result);
+            }
+
+            return nullptr;
         }
 
-        [[nodiscard]] memory_range& range() noexcept { return range_; }
-        [[nodiscard]] const memory_range& range() const noexcept { return range_; }
+        [[nodiscard]] auto& range() noexcept { return range_; }
+        [[nodiscard]] auto& range() const noexcept { return range_; }
 
     private:
         Range range_;

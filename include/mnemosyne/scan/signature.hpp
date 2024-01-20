@@ -100,11 +100,11 @@ namespace mnem {
         constexpr signature() = delete;
         constexpr signature(const signature&) = default;
 
-        constexpr explicit signature(const sig_storage& sig) :
+        constexpr signature(const sig_storage& sig) : // NOLINT(google-explicit-constructor)
             internal::sig_base<std::span<const sig_element>>({ sig.container() }) {}
 
         template <size_t N>
-        constexpr explicit signature(const static_sig_storage<N>& sig) :
+        constexpr signature(const static_sig_storage<N>& sig) : // NOLINT(google-explicit-constructor)
                 internal::sig_base<std::span<const sig_element>>({ sig.container() }) {}
     };
 
@@ -147,8 +147,8 @@ namespace mnem {
     }
 
     template <internal::string_literal Str>
-    constexpr auto make_signature() {
-        return signature{ internal::make_sig_helper<Str>::storage };
+    constexpr signature make_signature() {
+        return internal::make_sig_helper<Str>::storage;
     }
 
     namespace sig_literals {

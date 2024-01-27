@@ -13,7 +13,18 @@ namespace mnem {
     // TODO: Scan alignment for results we know are aligned in memory
     // TODO: Variants supporting multiple results and batches of signatures
     // TODO: Scan for scalar types and simple byte arrays
-    // TODO: Result type instead of uintptr_t
+    // TODO: Result type instead of pointer
+
+    namespace internal {
+        const std::byte* do_scan(const std::byte* begin, const std::byte* end, const signature& sig);
+
+        inline std::byte* do_scan(std::byte* begin, std::byte* end, const signature& sig) {
+            return const_cast<std::byte*>(do_scan( // rare const_cast use case?!?!?!
+                    static_cast<const std::byte*>(begin),
+                    static_cast<const std::byte*>(end),
+                    sig));
+        }
+    }
 
     template <memory_range Range = const_memory_span>
     class scanner {
@@ -24,14 +35,8 @@ namespace mnem {
             // TODO: SIMD-based methods, which will be ez to make since we only support x86/64
 
             for (auto& i : range_) {
-                auto result =
-                        std::search(
-                            std::execution::par_unseq,
-                            i.begin(), i.end(),
-                            sig.begin(), sig.end());
-
-                if (result != i.end())
-                    return std::to_address(result);
+                if (auto result = internal::do_scan(std::to_address(i.begin()), std::to_address(i.end()), sig); result)
+                    return result;
             }
 
             return nullptr;

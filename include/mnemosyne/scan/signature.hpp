@@ -4,6 +4,7 @@
 
 #include "../internal/string_literal.hpp"
 
+#include <cstdint>
 #include <vector>
 #include <span>
 #include <array>

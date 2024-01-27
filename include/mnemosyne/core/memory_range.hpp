@@ -27,10 +27,10 @@ namespace mnem {
     public:
         constexpr memory_span(std::byte* begin, std::size_t size) noexcept : dumb_array_({{ begin, size }}) {}
 
-        [[nodiscard]] auto span() const noexcept { return dumb_array_[0]; }
+        [[nodiscard]] constexpr auto span() const noexcept { return dumb_array_[0]; }
 
-        [[nodiscard]] auto begin() const noexcept { return dumb_array_.begin(); }
-        [[nodiscard]] auto end() const noexcept { return dumb_array_.end(); }
+        [[nodiscard]] constexpr auto begin() const noexcept { return dumb_array_.begin(); }
+        [[nodiscard]] constexpr auto end() const noexcept { return dumb_array_.end(); }
 
     private:
         // TODO: this is a severely stupid hack so i don't need to make a custom iterator, but i will do it properly eventually
@@ -42,10 +42,10 @@ namespace mnem {
         constexpr const_memory_span(const std::byte* begin, std::size_t size) noexcept : dumb_array_({{ begin, size }}) {}
         constexpr const_memory_span(const memory_span& range) noexcept : dumb_array_({ range.span() }) {} // NOLINT(google-explicit-constructor)
 
-        [[nodiscard]] auto span() const noexcept { return dumb_array_[0]; }
+        [[nodiscard]] constexpr auto span() const noexcept { return dumb_array_[0]; }
 
-        [[nodiscard]] auto begin() noexcept { return dumb_array_.begin(); }
-        [[nodiscard]] auto end() noexcept { return dumb_array_.end(); }
+        [[nodiscard]] constexpr auto begin() noexcept { return dumb_array_.begin(); }
+        [[nodiscard]] constexpr auto end() noexcept { return dumb_array_.end(); }
 
     private:
         std::array<std::span<const std::byte>, 1> dumb_array_;

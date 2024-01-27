@@ -15,14 +15,28 @@ namespace mnem {
     // TODO: Scan for scalar types and simple byte arrays
     // TODO: Result type instead of pointer
 
-    namespace internal {
-        const std::byte* do_scan(const std::byte* begin, const std::byte* end, const signature& sig);
+    /// Describes which scanning mode to use.
+    enum class scan_mode {
+        automatic,  // Detect the best mode based on available CPU features
+        normal,     // Pure C++ scanner, which uses no CPU extensions or intrinsics.
+        sse4_1,     // 128-bit SSE 4.1 scanner, works on almost all modern CPUs
+        avx2,       // 256-bit AVX2 scanner, works on most modern CPUs
+        avx512      // 512-bit AVX512 scanner, only works on the most recent CPUs
+    };
 
-        inline std::byte* do_scan(std::byte* begin, std::byte* end, const signature& sig) {
+    namespace internal {
+        inline scan_mode detect_mode() {
+            return scan_mode::normal; // TODO
+        }
+
+        const std::byte* do_scan(const std::byte* begin, const std::byte* end, const signature& sig, scan_mode mode);
+
+        inline std::byte* do_scan(std::byte* begin, std::byte* end, const signature& sig, scan_mode mode) {
             return const_cast<std::byte*>(do_scan( // rare const_cast use case?!?!?!
                     static_cast<const std::byte*>(begin),
                     static_cast<const std::byte*>(end),
-                    sig));
+                    sig,
+                    mode));
         }
     }
 
@@ -31,11 +45,12 @@ namespace mnem {
     public:
         explicit scanner(Range range) noexcept : range_(std::move(range)) {}
 
-        [[nodiscard]] memory_range_element_t<Range>* scan_signature(signature sig) const noexcept {
-            // TODO: SIMD-based methods, which will be ez to make since we only support x86/64
+        [[nodiscard]] memory_range_element_t<Range>* scan_signature(signature sig, scan_mode mode = scan_mode::automatic) const noexcept {
+            if (mode == scan_mode::automatic)
+                mode = internal::detect_mode();
 
             for (auto& i : range_) {
-                if (auto result = internal::do_scan(std::to_address(i.begin()), std::to_address(i.end()), sig); result)
+                if (auto result = internal::do_scan(std::to_address(i.begin()), std::to_address(i.end()), sig, mode); result)
                     return result;
             }
 

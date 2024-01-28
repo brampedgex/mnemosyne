@@ -24,7 +24,7 @@ static std::string_view mode_to_string(mnem::scan_mode mode) {
 static void benchmark(mnem::scan_mode mode) {
     static constexpr size_t max_size = 0x40000000; // 1G, TODO a way to change this
 
-    for (size_t size = 8; size <= max_size; size <<= 1) {
+    for (size_t size = 16; size <= max_size; size <<= 1) {
         auto buffer = std::make_unique<std::byte[]>(size);
 
         // Random data that is consistent across all machines

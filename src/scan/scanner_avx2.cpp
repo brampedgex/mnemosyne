@@ -109,7 +109,11 @@ namespace {
 
 namespace mnem::internal {
     const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig) {
-        const size_t main_size = 2 + 32; // First two bytes at the extra 32
+        // Benchmarks with synthetic data show that the normal scanner is consistently faster than the AVX2 scanner on buffers below 4kb.
+        if (end - begin <= 4096)
+            return scan_impl_normal(begin, end, sig);
+
+        const size_t main_size = 2 + 32; // First two bytes and the extra 32
 
         // Strip bytes until they will fit into the AVX registers.
         while (sig.back().mask() == std::byte{0} && sig.size() > main_size) {

@@ -25,27 +25,35 @@ static void benchmark(mnem::scan_mode mode) {
     static constexpr size_t max_size = 0x40000000; // 1G, TODO a way to change this
 
     for (size_t size = 16; size <= max_size; size <<= 1) {
-        auto buffer = std::make_unique<std::byte[]>(size);
-
-        // Random data that is consistent across all machines
-        std::mt19937 rng; // NOLINT
-        std::uniform_int_distribution<uint64_t> dist{ 0, std::numeric_limits<uint64_t>::max() };
-        for (auto ptr = reinterpret_cast<uint64_t*>(buffer.get()); ptr < reinterpret_cast<uint64_t*>(buffer.get() + size); ptr++)
-            *ptr = dist(rng);
-
         std::cout << mode_to_string(mode) << " scanner with " << size << " byte buffer... ";
 
-        mnem::scanner scanner{ mnem::memory_span{ buffer.get(), size } };
         auto sig = mnem::make_signature<"01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16">();
 
-        const size_t iterations = std::min(max_size * 20 / size, {1'000'000});
+        const size_t iterations = std::min(max_size * 40 / size, {0x100000});
+        const int buffer_count = 8; // multiple buffers since the allocator can seem to cause the results to vary wildly
 
-        auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < iterations; i++)
-            [[maybe_unused]] auto _ = scanner.scan_signature(sig, mode);
-        auto end = std::chrono::steady_clock::now();
+        long long totalTime = 0;
+        for (int i = 0; i < buffer_count; i++) {
+            auto buffer = std::make_unique<std::byte[]>(size);
 
-        auto us_per_iter = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()) / static_cast<double>(iterations);
+            // Random data that is consistent across all machines
+            std::mt19937 rng; // NOLINT
+            std::uniform_int_distribution<uint64_t> dist{ 0, std::numeric_limits<uint64_t>::max() };
+            for (auto ptr = reinterpret_cast<uint64_t*>(buffer.get()); ptr < reinterpret_cast<uint64_t*>(buffer.get() + size); ptr++)
+                *ptr = dist(rng);
+
+            mnem::scanner scanner{ mnem::memory_span{ buffer.get(), size } };
+            const size_t itersPerBuffer = iterations / buffer_count;
+
+            auto start = std::chrono::steady_clock::now();
+            for (int j = 0; j < itersPerBuffer; j++)
+                [[maybe_unused]] auto _ = scanner.scan_signature(sig, mode);
+            auto end = std::chrono::steady_clock::now();
+
+            totalTime += std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        }
+
+        auto us_per_iter = static_cast<double>(totalTime) / static_cast<double>(iterations);
         // bytes per microsecond = megabytes per second
         auto mbps = static_cast<double>(size) / us_per_iter;
 

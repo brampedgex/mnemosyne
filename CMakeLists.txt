@@ -3,7 +3,7 @@ project(mnemosyne)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(mnemosyne include/mnemosyne/core/memory_range.hpp include/mnemosyne/scan/signature.hpp include/mnemosyne/internal/string_literal.hpp include/mnemosyne/scan/scanner.hpp src/mnemosyne.cpp include/mnemosyne/mem/process.hpp src/scan/scanner.cpp)
+add_library(mnemosyne include/mnemosyne/core/memory_range.hpp include/mnemosyne/scan/signature.hpp include/mnemosyne/internal/string_literal.hpp include/mnemosyne/scan/scanner.hpp src/mnemosyne.cpp include/mnemosyne/mem/process.hpp src/scan/scanner.cpp src/scan/scanner_impls.hpp src/scan/scanner_avx2.cpp)
 
 if (WIN32)
     target_sources(mnemosyne PRIVATE src/os/win32/process.cpp)
@@ -14,6 +14,7 @@ else()
 endif()
 
 add_subdirectory(test)
+add_subdirectory(bench)
 
 target_include_directories(mnemosyne PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

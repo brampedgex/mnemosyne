@@ -44,6 +44,15 @@ namespace mnem {
             [[nodiscard]] constexpr auto end() noexcept { return c_.end(); }
             [[nodiscard]] constexpr auto begin() const noexcept { return c_.begin(); }
             [[nodiscard]] constexpr auto end() const noexcept { return c_.end(); }
+
+            [[nodiscard]] constexpr size_t size() const { return c_.size(); }
+            [[nodiscard]] constexpr bool empty() const { return c_.empty(); }
+
+            [[nodiscard]] constexpr auto& operator[](size_t idx) const { return c_[idx]; }
+            [[nodiscard]] constexpr auto& operator[](size_t idx) { return c_[idx]; }
+
+            [[nodiscard]] constexpr auto& front() const { return c_.front(); }
+            [[nodiscard]] constexpr auto& back() const { return c_.back(); }
         };
 
         // TODO: These are severely dumb
@@ -97,16 +106,27 @@ namespace mnem {
     };
 
     class signature : public internal::sig_base<std::span<const sig_element>> {
+        using base_t = internal::sig_base<std::span<const sig_element>>;
+
     public:
         constexpr signature() = delete;
-        constexpr signature(const signature&) = default;
+        constexpr signature(const signature&) noexcept = default;
 
         constexpr signature(const sig_storage& sig) : // NOLINT(google-explicit-constructor)
-            internal::sig_base<std::span<const sig_element>>({ sig.container() }) {}
+            base_t({ sig.container() }) {}
 
         template <size_t N>
-        constexpr signature(const static_sig_storage<N>& sig) : // NOLINT(google-explicit-constructor)
-                internal::sig_base<std::span<const sig_element>>({ sig.container() }) {}
+        constexpr signature(const static_sig_storage<N>& sig) noexcept : // NOLINT(google-explicit-constructor)
+                base_t({ sig.container() }) {}
+
+        constexpr explicit signature(std::span<const sig_element> span) noexcept : base_t(span) {}
+
+        [[nodiscard]] constexpr auto& span() const noexcept { return this->c_; }
+        [[nodiscard]] constexpr auto& span() noexcept { return this->c_; }
+
+        [[nodiscard]] constexpr auto subsig(size_t offset, size_t count = std::dynamic_extent) {
+            return signature{ this->c_.subspan(offset, count) };
+        }
     };
 
 

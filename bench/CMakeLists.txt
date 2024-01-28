@@ -1,0 +1,3 @@
+add_executable(MnemosyneBenchmark benchmark.cpp)
+
+target_link_libraries(MnemosyneBenchmark PRIVATE mnemosyne)

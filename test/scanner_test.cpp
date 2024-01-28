@@ -26,6 +26,6 @@ TEST(MnemosyneTests, ScannerTest) {
     mnem::memory_span range{ reinterpret_cast<std::byte*>(bytes), 18 };
     mnem::scanner scanner{ range };
 
-    auto result = scanner.scan_signature(mnem::make_signature<"3A 5 ?? 71">());
-    ASSERT_EQ(result, reinterpret_cast<std::byte*>(bytes) + 11);
+    auto offset = scanner.scan_signature(mnem::make_signature<"3A 5 ?? 71">()) - reinterpret_cast<std::byte*>(bytes);
+    ASSERT_EQ(offset, 11);
 }

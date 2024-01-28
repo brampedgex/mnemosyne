@@ -16,22 +16,23 @@ namespace mnem {
     // TODO: Result type instead of pointer
 
     /// Describes which scanning mode to use.
-    enum class scan_mode {
+    enum class scan_mode : int {
         automatic,  // Detect the best mode based on available CPU features
         normal,     // Pure C++ scanner, which uses no CPU extensions or intrinsics.
-        sse4_1,     // 128-bit SSE 4.1 scanner, works on almost all modern CPUs
+        sse4_2,     // 128-bit SSE 4.2 scanner, works on almost all modern CPUs
         avx2,       // 256-bit AVX2 scanner, works on most modern CPUs
-        avx512      // 512-bit AVX512 scanner, only works on the most recent CPUs
+        avx512,     // 512-bit AVX512 scanner, only works on the most recent CPUs
+        max,         // Maximum possible value of this enum
     };
 
+    inline scan_mode detect_scan_mode() {
+        return scan_mode::normal; // TODO
+    }
+
     namespace internal {
-        inline scan_mode detect_mode() {
-            return scan_mode::normal; // TODO
-        }
+        const std::byte* do_scan(const std::byte* begin, const std::byte* end, signature sig, scan_mode mode);
 
-        const std::byte* do_scan(const std::byte* begin, const std::byte* end, const signature& sig, scan_mode mode);
-
-        inline std::byte* do_scan(std::byte* begin, std::byte* end, const signature& sig, scan_mode mode) {
+        inline std::byte* do_scan(std::byte* begin, std::byte* end, signature sig, scan_mode mode) {
             return const_cast<std::byte*>(do_scan( // rare const_cast use case?!?!?!
                     static_cast<const std::byte*>(begin),
                     static_cast<const std::byte*>(end),
@@ -46,10 +47,16 @@ namespace mnem {
         explicit scanner(Range range) noexcept : range_(std::move(range)) {}
 
         [[nodiscard]] memory_range_element_t<Range>* scan_signature(signature sig, scan_mode mode = scan_mode::automatic) const noexcept {
+            if (sig.container().empty())
+                return nullptr;
+
             if (mode == scan_mode::automatic)
-                mode = internal::detect_mode();
+                mode = detect_scan_mode();
 
             for (auto& i : range_) {
+                if (std::distance(i.begin(), i.end()) < sig.size())
+                    continue;
+
                 if (auto result = internal::do_scan(std::to_address(i.begin()), std::to_address(i.end()), sig, mode); result)
                     return result;
             }

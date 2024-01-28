@@ -66,8 +66,11 @@ namespace {
             std::tie(sig_bytes, sig_masks) = load_sig_256(sig.subspan(2));
 
         for (auto ptr = begin; ptr != end; ptr += 32) {
-            //_mm_prefetch(reinterpret_cast<const char*>(ptr + 32), 0); TODO: For very large buffer sizes, this increased speed by 2GB/s, but decreased speed for smaller sizes. Need to figure out how to get the most speed out of it.
-
+            // TODO: THIS HAS ONLY BEEN TESTED ON AMD PROCESSORS!
+            // This speeds up the scan by 2-6 GB/s when the buffer is not already in the L3 cache, OR the buffer is entirely in the L1 cache.
+            // 4096 seems to be the sweet spot for prefetching, since higher values start to reduce performance instead.
+            // Since prefetch doesn't affect program behavior besides performance, we also don't have to care about out-of-bounds pointers.
+            _mm_prefetch(reinterpret_cast<const char*>(ptr + 4096), _MM_HINT_NTA);
             auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
 
             auto tmp = mem;
@@ -109,8 +112,9 @@ namespace {
 
 namespace mnem::internal {
     const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig) {
-        // Benchmarks with synthetic data show that the normal scanner is consistently faster than the AVX2 scanner on buffers below 4kb.
-        if (end - begin <= 4096)
+        // Benchmarks with synthetic data show that the normal scanner is consistently faster than the AVX2 scanner on buffers below 8kb.
+        // Currently unsure if this behavior varies across CPUs and vendors.
+        if (end - begin <= 8192)
             return scan_impl_normal(begin, end, sig);
 
         const size_t main_size = 2 + 32; // First two bytes and the extra 32

@@ -164,29 +164,29 @@ namespace mnem::internal {
             auto dispatch_2 = [&]<bool FirstMask, second_byte_kind SecondByteKind> {
                 switch (cmptype) {
                     case cmp_type::none:
-                        return avx2_main_scan<FirstMask, SecondByteKind, cmp_type::none>(a_begin, a_end, sig);
+                        result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::none>(a_begin, a_end, sig);
                     case cmp_type::vector:
-                        return avx2_main_scan<FirstMask, SecondByteKind, cmp_type::vector>(a_begin, a_end, sig);
+                        result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::vector>(a_begin, a_end, sig);
                     case cmp_type::extended:
-                        return avx2_main_scan<FirstMask, SecondByteKind, cmp_type::extended>(a_begin, a_end, sig);
+                        result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::extended>(a_begin, a_end, sig);
                 }
             };
 
             auto dispatch_1 = [&]<bool FirstMask> {
                 switch (sbk) {
                     case second_byte_kind::none:
-                        return dispatch_2.template operator()<FirstMask, second_byte_kind::none>();
+                        dispatch_2.template operator()<FirstMask, second_byte_kind::none>();
                     case second_byte_kind::full:
-                        return dispatch_2.template operator()<FirstMask, second_byte_kind::full>();
+                        dispatch_2.template operator()<FirstMask, second_byte_kind::full>();
                     case second_byte_kind::masked:
-                        return dispatch_2.template operator()<FirstMask, second_byte_kind::masked>();
+                        dispatch_2.template operator()<FirstMask, second_byte_kind::masked>();
                 }
             };
 
             if (first_mask)
-                result = dispatch_1.operator()<true>();
+                dispatch_1.operator()<true>();
             else
-                result = dispatch_1.operator()<false>();
+                dispatch_1.operator()<false>();
         }
 
         if (a_end < end && !result) {

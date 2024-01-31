@@ -35,8 +35,8 @@ namespace {
                 bytes[i] = byte & mask;
                 masks[i] = mask;
             } else {
-                bytes[i] = {0};
-                masks[i] = {0};
+                bytes[i] = std::byte{0};
+                masks[i] = std::byte{0};
             }
         }
 

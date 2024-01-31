@@ -28,12 +28,15 @@ namespace mnem {
     namespace internal {
         template <class Container>
         class sig_base {
+        public:
+            using container_t = Container;
+
         protected:
-            Container c_{};
+            container_t c_{};
 
         public:
             constexpr sig_base() = default;
-            constexpr explicit sig_base(Container c) : c_(std::move(c)) {}
+            constexpr explicit sig_base(container_t c) : c_(std::move(c)) {}
 
             /// Returns the underlying container.
             [[nodiscard]] constexpr auto& container() noexcept { return c_; }
@@ -113,11 +116,11 @@ namespace mnem {
         constexpr signature(const signature&) noexcept = default;
 
         constexpr signature(const sig_storage& sig) : // NOLINT(google-explicit-constructor)
-            base_t({ sig.container() }) {}
+            base_t(container_t{ sig.container() }) {}
 
         template <size_t N>
         constexpr signature(const static_sig_storage<N>& sig) noexcept : // NOLINT(google-explicit-constructor)
-                base_t({ sig.container() }) {}
+                base_t(container_t{ sig.container() }) {}
 
         constexpr explicit signature(std::span<const sig_element> span) noexcept : base_t(span) {}
 

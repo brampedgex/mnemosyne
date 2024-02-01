@@ -19,8 +19,10 @@ namespace {
 
     template <size_t Align, class T>
     T* align_ptr(T* ptr) {
-        return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ~static_cast<uintptr_t>(Align - 1));
+        constexpr uintptr_t alignmentMask = Align - 1;
+        return reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(ptr) + alignmentMask) & ~alignmentMask);
     }
+
 
     // Load signature bytes and masks into two 256-bit registers
     __attribute__((target("avx")))

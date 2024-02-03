@@ -4,118 +4,106 @@
 
 #include <immintrin.h>
 
-namespace {
-    enum class second_byte_kind {
-        none,   // Fully masked or not present
-        full,   // Fully unmasked
-        masked  // Partially masked
-    };
+namespace mnem::internal {
+    namespace {
+        enum class second_byte_kind {
+            none,   // Fully masked or not present
+            full,   // Fully unmasked
+            masked  // Partially masked
+        };
 
-    enum class cmp_type {
-        none,       // Don't compare
-        vector,     // Do vectorized compare
-        extended,   // Do vectorized compare, then std::equal
-    };
+        enum class cmp_type {
+            none,       // Don't compare
+            vector,     // Do vectorized compare
+            extended,   // Do vectorized compare, then std::equal
+        };
 
-    template <size_t Align, class T>
-    T* align_ptr(T* ptr) {
-        static constexpr uintptr_t ALIGN_MASK = ~static_cast<uintptr_t>(Align - 1);
-        return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ALIGN_MASK);
-    }
+        // Load signature bytes and masks into two 256-bit registers
+        std::pair<__m256i, __m256i> load_sig_256(std::span<const mnem::sig_element> sig) {
+            std::byte bytes[32]{};
+            std::byte masks[32]{};
 
-    template <size_t Align, class T>
-    T* align_ptr_up(T* ptr) {
-        static constexpr uintptr_t ALIGN_MASK = ~static_cast<uintptr_t>(Align - 1);
-        return reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(ptr) + ALIGN_MASK) & ALIGN_MASK);
-    }
-
-    // Load signature bytes and masks into two 256-bit registers
-    std::pair<__m256i, __m256i> load_sig_256(std::span<const mnem::sig_element> sig) {
-        std::byte bytes[32]{};
-        std::byte masks[32]{};
-
-        for (size_t i = 0; i < 32; i++) {
-            if (i < sig.size()) {
-                auto byte = sig[i].byte();
-                auto mask = sig[i].mask();
-                bytes[i] = byte & mask;
-                masks[i] = mask;
-            } else {
-                bytes[i] = std::byte{0};
-                masks[i] = std::byte{0};
+            for (size_t i = 0; i < 32; i++) {
+                if (i < sig.size()) {
+                    auto byte = sig[i].byte();
+                    auto mask = sig[i].mask();
+                    bytes[i] = byte & mask;
+                    masks[i] = mask;
+                } else {
+                    bytes[i] = std::byte{0};
+                    masks[i] = std::byte{0};
+                }
             }
+
+            return std::make_pair(
+                    _mm256_loadu_si256(reinterpret_cast<__m256i*>(&bytes)),
+                    _mm256_loadu_si256(reinterpret_cast<__m256i*>(&masks))
+            );
         }
 
-        return std::make_pair(
-                _mm256_loadu_si256(reinterpret_cast<__m256i*>(&bytes)),
-                _mm256_loadu_si256(reinterpret_cast<__m256i*>(&masks))
-                );
-    }
+        template <bool FirstMask, second_byte_kind SecondByteKind, cmp_type CmpType>
+        const std::byte* avx2_main_scan(const std::byte* begin, const std::byte* end, std::span<const mnem::sig_element> sig) {
+            __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
 
-    template <bool FirstMask, second_byte_kind SecondByteKind, cmp_type CmpType>
-    const std::byte* avx2_main_scan(const std::byte* begin, const std::byte* end, std::span<const mnem::sig_element> sig) {
-        __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
-
-        first_bytes = _mm256_set1_epi8(static_cast<char>(sig[0].byte()));
-        if constexpr (FirstMask)
-            first_masks = _mm256_set1_epi8(static_cast<char>(sig[0].mask()));
-
-        if constexpr (SecondByteKind != second_byte_kind::none) {
-            second_bytes = _mm256_set1_epi8(static_cast<char>(sig[1].byte()));
-            if constexpr (SecondByteKind == second_byte_kind::masked) {
-                second_masks = _mm256_set1_epi8(static_cast<char>(sig[1].mask()));
-            }
-        }
-
-        if constexpr (CmpType != cmp_type::none)
-            std::tie(sig_bytes, sig_masks) = load_sig_256(sig.subspan(2));
-
-        for (auto ptr = begin; ptr != end; ptr += 32) {
-            // TODO: THIS HAS ONLY BEEN TESTED ON AMD PROCESSORS!
-            // This speeds up the scan by 2-6 GB/s when the buffer is not already in the L3 cache, OR the buffer is entirely in the L1 cache.
-            // 4096 seems to be the sweet spot for prefetching, since higher values start to reduce performance instead.
-            // Since prefetch doesn't affect program behavior besides performance, we also don't have to care about out-of-bounds pointers.
-            _mm_prefetch(reinterpret_cast<const char*>(ptr + 4096), _MM_HINT_NTA);
-            auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
-
-            auto tmp = mem;
+            first_bytes = _mm256_set1_epi8(static_cast<char>(sig[0].byte()));
             if constexpr (FirstMask)
-                tmp = _mm256_and_si256(tmp, first_masks);
-
-            uint32_t mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(tmp, first_bytes));
+                first_masks = _mm256_set1_epi8(static_cast<char>(sig[0].mask()));
 
             if constexpr (SecondByteKind != second_byte_kind::none) {
-                tmp = mem;
-                if constexpr (SecondByteKind == second_byte_kind::masked)
-                    tmp = _mm256_and_si256(tmp, second_masks);
-
-                uint32_t mask2 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(tmp, second_bytes));
-                mask &= mask2 >> 1 | (1u << 31); // pretend second byte matched at the last position in the vector
+                second_bytes = _mm256_set1_epi8(static_cast<char>(sig[1].byte()));
+                if constexpr (SecondByteKind == second_byte_kind::masked) {
+                    second_masks = _mm256_set1_epi8(static_cast<char>(sig[1].mask()));
+                }
             }
 
-            while (mask) {
-                auto match = ptr + _tzcnt_u32(mask);
+            if constexpr (CmpType != cmp_type::none)
+                std::tie(sig_bytes, sig_masks) = load_sig_256(sig.subspan(2));
 
-                if constexpr (CmpType == cmp_type::none)
-                    return match;
+            for (auto ptr = begin; ptr != end; ptr += 32) {
+                // TODO: THIS HAS ONLY BEEN TESTED ON AMD PROCESSORS!
+                // This speeds up the scan by 2-6 GB/s when the buffer is not already in the L3 cache, OR the buffer is entirely in the L1 cache.
+                // 4096 seems to be the sweet spot for prefetching, since higher values start to reduce performance instead.
+                // Since prefetch doesn't affect program behavior besides performance, we also don't have to care about out-of-bounds pointers.
+                _mm_prefetch(reinterpret_cast<const char*>(ptr + 4096), _MM_HINT_NTA);
+                auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
 
-                auto match_mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(match + 2));
-                match_mem = _mm256_and_si256(match_mem, sig_masks);
-                if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_mem, sig_bytes)) == 0xFFFFFFFF) {
-                    return match;
+                auto tmp = mem;
+                if constexpr (FirstMask)
+                    tmp = _mm256_and_si256(tmp, first_masks);
 
-                    // TODO: extended compare
+                uint32_t mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(tmp, first_bytes));
+
+                if constexpr (SecondByteKind != second_byte_kind::none) {
+                    tmp = mem;
+                    if constexpr (SecondByteKind == second_byte_kind::masked)
+                        tmp = _mm256_and_si256(tmp, second_masks);
+
+                    uint32_t mask2 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(tmp, second_bytes));
+                    mask &= mask2 >> 1 | (1u << 31); // pretend second byte matched at the last position in the vector
                 }
 
-                mask = _blsr_u64(mask);
+                while (mask) {
+                    auto match = ptr + _tzcnt_u32(mask);
+
+                    if constexpr (CmpType == cmp_type::none)
+                        return match;
+
+                    auto match_mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(match + 2));
+                    match_mem = _mm256_and_si256(match_mem, sig_masks);
+                    if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_mem, sig_bytes)) == 0xFFFFFFFF) {
+                        return match;
+
+                        // TODO: extended compare
+                    }
+
+                    mask = _blsr_u64(mask);
+                }
             }
+
+            return nullptr;
         }
-
-        return nullptr;
     }
-}
 
-namespace mnem::internal {
     const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig) {
         // Benchmarks with synthetic data show that the normal scanner is consistently faster than the AVX2 scanner on buffers below 8kb.
         // Currently unsure if this behavior varies across CPUs and vendors.

@@ -10,7 +10,7 @@ FETCHCONTENT_DECLARE(
 FETCHCONTENT_MAKEAVAILABLE(googletest)
 
 add_executable(MnemosyneTests
-        signature_test.cpp scanner_test.cpp)
+        signature_test.cpp scanner_test.cpp vfunc_index_test.cpp)
 
 target_link_libraries(MnemosyneTests PUBLIC gtest_main mnemosyne)
 

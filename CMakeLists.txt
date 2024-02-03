@@ -14,7 +14,7 @@ add_library(mnemosyne
         src/scan/scanner_impls.hpp
         src/scan/scanner_avx2.cpp
         src/cpuid.hpp
-        src/cpuid.cpp)
+        src/cpuid.cpp include/mnemosyne/defines.hpp include/mnemosyne/internal/abi/itanium/vfunc_index_impl.hpp include/mnemosyne/internal/abi/microsoft/vfunc_index_impl.hpp include/mnemosyne/core/vfunc_index.hpp)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set_source_files_properties(src/scan/scanner_avx2.cpp PROPERTIES COMPILE_FLAGS "-mavx -mavx2 -mbmi")

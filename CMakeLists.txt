@@ -12,7 +12,9 @@ add_library(mnemosyne
         include/mnemosyne/mem/process.hpp
         src/scan/scanner.cpp
         src/scan/scanner_impls.hpp
-        src/scan/scanner_avx2.cpp)
+        src/scan/scanner_avx2.cpp
+        src/cpuid.hpp
+        src/cpuid.cpp)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set_source_files_properties(src/scan/scanner_avx2.cpp PROPERTIES COMPILE_FLAGS "-mavx -mavx2 -mbmi")

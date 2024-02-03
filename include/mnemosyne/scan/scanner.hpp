@@ -25,9 +25,7 @@ namespace mnem {
         max,         // Maximum possible value of this enum
     };
 
-    inline scan_mode detect_scan_mode() {
-        return scan_mode::normal; // TODO
-    }
+    scan_mode detect_scan_mode();
 
     namespace internal {
         const std::byte* do_scan(const std::byte* begin, const std::byte* end, signature sig, scan_mode mode);

@@ -1,6 +1,21 @@
 #include "scanner_impls.hpp"
+#include "../cpuid.hpp"
 
 #include <iostream>
+
+namespace mnem {
+    scan_mode detect_scan_mode() {
+        using internal::cpuinfo;
+
+        if (cpuinfo::bmi1() && cpuinfo::avx2())
+            return scan_mode::avx2;
+
+        if (cpuinfo::sse4_2())
+            return scan_mode::sse4_2;
+
+        return scan_mode::normal;
+    }
+}
 
 namespace mnem::internal {
     const std::byte* scan_impl_normal(const std::byte* begin, const std::byte* end, signature sig) {

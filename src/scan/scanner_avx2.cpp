@@ -19,7 +19,14 @@ namespace {
 
     template <size_t Align, class T>
     T* align_ptr(T* ptr) {
-        return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ~static_cast<uintptr_t>(Align - 1));
+        static constexpr uintptr_t ALIGN_MASK = ~static_cast<uintptr_t>(Align - 1);
+        return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ALIGN_MASK);
+    }
+
+    template <size_t Align, class T>
+    T* align_ptr_up(T* ptr) {
+        static constexpr uintptr_t ALIGN_MASK = ~static_cast<uintptr_t>(Align - 1);
+        return reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(ptr) + ALIGN_MASK) & ALIGN_MASK);
     }
 
     // Load signature bytes and masks into two 256-bit registers
@@ -124,10 +131,8 @@ namespace mnem::internal {
             // can't become empty
         }
 
-        auto a_begin = align_ptr<32>(begin);
-        if (a_begin < begin) {
-            a_begin += 32;
-
+        auto a_begin = align_ptr_up<32>(begin);
+        if (a_begin > begin) {
             auto small_end = std::min(a_begin + sig.size() - 1, end);
             auto ptr = std::search(begin, small_end, sig.begin(), sig.end());
             if (ptr != small_end)

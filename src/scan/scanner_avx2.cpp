@@ -44,6 +44,7 @@ namespace mnem::internal {
         template <bool FirstMask, second_byte_kind SecondByteKind, cmp_type CmpType>
         const std::byte* avx2_main_scan(const std::byte* begin, const std::byte* end, std::span<const mnem::sig_element> sig) {
             __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
+            std::span<const mnem::sig_element> ext_sig;
 
             first_bytes = _mm256_set1_epi8(static_cast<char>(sig[0].byte()));
             if constexpr (FirstMask)
@@ -56,8 +57,12 @@ namespace mnem::internal {
                 }
             }
 
-            if constexpr (CmpType != cmp_type::none)
+            if constexpr (CmpType != cmp_type::none) {
                 std::tie(sig_bytes, sig_masks) = load_sig_256(sig.subspan(2));
+
+                if constexpr (CmpType == cmp_type::extended)
+                    ext_sig = sig.subspan(2 + 32);
+            }
 
             for (auto ptr = begin; ptr != end; ptr += 32) {
                 // TODO: THIS HAS ONLY BEEN TESTED ON AMD PROCESSORS!
@@ -91,9 +96,11 @@ namespace mnem::internal {
                     auto match_mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(match + 2));
                     match_mem = _mm256_and_si256(match_mem, sig_masks);
                     if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_mem, sig_bytes)) == 0xFFFFFFFF) {
-                        return match;
+                        if constexpr (CmpType == cmp_type::vector)
+                            return match;
 
-                        // TODO: extended compare
+                        if (std::equal(ext_sig.begin(), ext_sig.end(), match + 2 + 32))
+                            return match;
                     }
 
                     mask = _blsr_u64(mask);
@@ -119,6 +126,34 @@ namespace mnem::internal {
             // can't become empty
         }
 
+        bool first_mask = false;
+        second_byte_kind sbk = second_byte_kind::none;
+        cmp_type cmptype = cmp_type::none;
+        size_t read_size = 1; // How many bytes the main scan will read, used for adjusting end ptr
+
+        if (sig.container()[0].mask() != std::byte{0xFF})
+            first_mask = true;
+
+        if (sig.container().size() > 1) {
+            read_size = 2;
+            auto second = sig.container()[1];
+
+            if (second.mask() == std::byte{0xFF})
+                sbk = second_byte_kind::full;
+            else if (second.mask() != std::byte{0})
+                sbk = second_byte_kind::masked;
+
+            if (sig.container().size() > 2) {
+                read_size = main_size;
+                cmptype = cmp_type::vector;
+
+                if (sig.container().size() > main_size) {
+                    read_size = sig.container().size();
+                    cmptype = cmp_type::extended;
+                }
+            }
+        }
+
         auto a_begin = align_ptr_up<32>(begin);
         if (a_begin > begin) {
             auto small_end = std::min(a_begin + sig.size() - 1, end);
@@ -127,26 +162,7 @@ namespace mnem::internal {
                 return ptr;
         }
 
-        auto a_end = align_ptr<32>(end - (main_size - 1));
-
-        bool first_mask = false;
-        second_byte_kind sbk = second_byte_kind::none;
-        cmp_type cmptype = cmp_type::none;
-
-        if (sig.container()[0].mask() != std::byte{0xFF})
-            first_mask = true;
-
-        if (sig.container().size() > 1) {
-            auto second = sig.container()[1];
-
-            if (second.mask() == std::byte{0xFF})
-                sbk = second_byte_kind::full;
-            else if (second.mask() != std::byte{0})
-                sbk = second_byte_kind::masked;
-
-            if (sig.container().size() > 2)
-                cmptype = cmp_type::vector;
-        }
+        auto a_end = align_ptr<32>(end - (read_size - 1));
 
         const std::byte* result = nullptr;
 

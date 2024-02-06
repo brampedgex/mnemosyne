@@ -23,10 +23,14 @@ namespace mnem::internal {
     struct fake_vtable<std::integer_sequence<size_t, Idxs...>> {
         using T = std::integer_sequence<size_t, Idxs...>;
         std::array<size_t(*)(), T::size()> funcs = std::to_array({ &fake_func<Idxs>::fn... });
-
-        static inline constinit fake_vtable<std::integer_sequence<size_t, Idxs...>> instance{};
-        static inline constinit void* obj = &instance;
     };
+
+    inline size_t vfunc_index_helper(size_t(*ptr)(void**)) {
+        static constinit fake_vtable<std::make_index_sequence<512>> vt{};
+        static constinit void* obj = &vt;
+
+        return ptr(&obj);
+    }
 
     template <class F, class T>
     inline size_t vfunc_index_impl(F T::*fn) {
@@ -38,7 +42,7 @@ namespace mnem::internal {
         };
 
         func = fn;
-        return reinterpret_cast<size_t(*)(void**)>(ptr)(&fake_vtable<std::make_index_sequence<512>>::obj);
+        return vfunc_index_helper(reinterpret_cast<size_t(*)(void**)>(ptr));
     }
 }
 

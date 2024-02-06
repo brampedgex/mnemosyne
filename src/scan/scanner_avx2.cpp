@@ -172,10 +172,13 @@ namespace mnem::internal {
                 switch (cmptype) {
                     case cmp_type::none:
                         result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::none>(a_begin, a_end, sig);
+                        break;
                     case cmp_type::vector:
                         result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::vector>(a_begin, a_end, sig);
+                        break;
                     case cmp_type::extended:
                         result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::extended>(a_begin, a_end, sig);
+                        break;
                 }
             };
 
@@ -183,10 +186,13 @@ namespace mnem::internal {
                 switch (sbk) {
                     case second_byte_kind::none:
                         dispatch_2.template operator()<FirstMask, second_byte_kind::none>();
+                        break;
                     case second_byte_kind::full:
                         dispatch_2.template operator()<FirstMask, second_byte_kind::full>();
+                        break;
                     case second_byte_kind::masked:
                         dispatch_2.template operator()<FirstMask, second_byte_kind::masked>();
+                        break;
                 }
             };
 

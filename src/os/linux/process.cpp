@@ -1,5 +1,6 @@
 #include <mnemosyne/mem/process.hpp>
 #include <link.h>
+#include "elf64.hpp"
 
 auto mnem::proc_module::get_memory_range() const -> memory_span {
     // TODO: this code is EXTREMELY sus bc i stole it from a linux csgo cheat
@@ -8,7 +9,29 @@ auto mnem::proc_module::get_memory_range() const -> memory_span {
 }
 
 auto mnem::proc_module::get_section_range(std::string_view name) const -> std::optional<memory_span> {
-    // TODO: how
+    auto* info = reinterpret_cast<dl_phdr_info*>(this->ptr);
+    elf64_ehdr* pelf64_ehdr = nullptr;
+
+    for(int i = 0; i < info->dlpi_phnum; i++){
+        const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
+        if(phdr->p_type == PT_PHDR){
+            pelf64_ehdr = reinterpret_cast<elf64_ehdr*>(info->dlpi_addr + phdr->p_offset - phdr->p_vaddr);
+            break;
+        }
+    }   
+
+    elf64_shdr* pelf64_shdr = reinterpret_cast<elf64_shdr*>(info->dlpi_addr + pelf64_ehdr->e_shoff);
+
+    for(uint32_t i = 0; i < pelf64_ehdr->e_shnum; i++){
+        const char* section_name = (const char*)(info->dlpi_addr + pelf64_shdr[pelf64_ehdr->e_shstrndx].sh_offset + pelf64_shdr[i].sh_name);
+        std::string_view sv_section_name(section_name);
+        if(name == sv_section_name){
+            memory_span section_rng((std::byte*)pelf64_shdr[i].sh_addr, pelf64_shdr[i].sh_size); //idk if the size is the section size or section start addr + size 
+            return section_rng;
+        }
+    }
+
+    return std::nullopt;
 }
 
 auto mnem::get_main_proc_module() -> proc_module {

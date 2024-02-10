@@ -1,27 +1,57 @@
 #include "scanner_impls.hpp"
 
 #include <iostream>
+#include <bit>
 
 #include <immintrin.h>
 
 namespace mnem::internal {
     namespace {
-        enum class second_byte_kind {
+        enum class cmp_type {
             none,   // Fully masked or not present
             full,   // Fully unmasked
             masked  // Partially masked
         };
 
-        enum class cmp_type {
-            none,       // Don't compare
-            vector,     // Do vectorized compare
-            extended,   // Do vectorized compare, then std::equal
-        };
+        //enum class cmp_type {
+        //    none,       // Don't compare
+        //    vector,     // Do vectorized compare
+        //    extended,   // Do vectorized compare, then std::equal
+        //};
+
+        // Find the optimal index in the two-byte search.
+        size_t find_twobyte_idx(mnem::signature sig) {
+            // This is good for random, uniformly distributed data, but in x86 code certain sequences of bytes are significantly more common that others.
+            // In the future we might want a lookup table of more common byte sequences to avoid.
+
+            size_t best = 0; // default to first byte
+
+            if (sig[best].mask() == std::byte{0xFF} && sig.size() > 1 && sig[best + 1].mask() == std::byte{0xFF})
+                return best;
+
+            for (size_t i = 1; i < sig.size(); i++) {
+                if (sig[i].mask() == std::byte{0})
+                    continue;
+
+                // Pick the position with a stricter mask.
+                int i_count = std::popcount(static_cast<uint8_t>(sig[i].mask()));
+                if (i + 1 < sig.size())
+                    i_count += std::popcount(static_cast<uint8_t>(sig[i+1].mask()));
+
+                int best_count = std::popcount(static_cast<uint8_t>(sig[best].mask()));
+                best_count += std::popcount(static_cast<uint8_t>(sig[best+1].mask()));
+
+                if (i_count > best_count)
+                    best = i;
+            }
+
+            return best;
+        }
 
         // Load signature bytes and masks into two 256-bit registers
-        std::pair<__m256i, __m256i> load_sig_256(std::span<const mnem::sig_element> sig) {
-            std::byte bytes[32]{};
-            std::byte masks[32]{};
+        std::pair<std::array<std::byte, 32>, std::array<std::byte, 32>> load_sig_256(std::span<const mnem::sig_element> sig) {
+            std::array<std::byte, 32> bytes{};
+            std::array<std::byte, 32> masks{};
 
             for (size_t i = 0; i < 32; i++) {
                 if (i < sig.size()) {
@@ -35,75 +65,142 @@ namespace mnem::internal {
                 }
             }
 
-            return std::make_pair(
-                    _mm256_loadu_si256(reinterpret_cast<__m256i*>(&bytes)),
-                    _mm256_loadu_si256(reinterpret_cast<__m256i*>(&masks))
-            );
+            return { bytes, masks };
         }
 
-        template <bool FirstMask, second_byte_kind SecondByteKind, cmp_type CmpType>
-        const std::byte* avx2_main_scan(const std::byte* begin, const std::byte* end, std::span<const mnem::sig_element> sig) {
-            __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
-            std::span<const mnem::sig_element> ext_sig;
+        template <cmp_type C0, cmp_type C1, cmp_type CSig, bool SigExt>
+        const std::byte* do_scan_avx2_x1(const std::byte* begin, const std::byte* end, mnem::signature sig, size_t twobyte_idx) {
+            __m256i b0, m0, b1, m1, bsig, msig;
 
-            first_bytes = _mm256_set1_epi8(static_cast<char>(sig[0].byte()));
-            if constexpr (FirstMask)
-                first_masks = _mm256_set1_epi8(static_cast<char>(sig[0].mask()));
-
-            if constexpr (SecondByteKind != second_byte_kind::none) {
-                second_bytes = _mm256_set1_epi8(static_cast<char>(sig[1].byte()));
-                if constexpr (SecondByteKind == second_byte_kind::masked) {
-                    second_masks = _mm256_set1_epi8(static_cast<char>(sig[1].mask()));
-                }
+            {
+                b0 = _mm256_set1_epi8(static_cast<char>(sig[twobyte_idx].byte()));
+                if constexpr (C0 == cmp_type::masked)
+                    m0 = _mm256_set1_epi8(static_cast<char>(sig[twobyte_idx].mask()));
             }
 
-            if constexpr (CmpType != cmp_type::none) {
-                std::tie(sig_bytes, sig_masks) = load_sig_256(sig.subspan(2));
-
-                if constexpr (CmpType == cmp_type::extended)
-                    ext_sig = sig.subspan(2 + 32);
+            if constexpr (C1 != cmp_type::none) {
+                b1 = _mm256_set1_epi8(static_cast<char>(sig[twobyte_idx+1].byte()));
+                if constexpr (C1 == cmp_type::masked)
+                    m1 = _mm256_set1_epi8(static_cast<char>(sig[twobyte_idx+1].mask()));
             }
 
-            for (auto ptr = begin; ptr != end; ptr += 32) {
-                // TODO: THIS HAS ONLY BEEN TESTED ON AMD PROCESSORS!
-                // This speeds up the scan by 2-6 GB/s when the buffer is not already in the L3 cache, OR the buffer is entirely in the L1 cache.
-                // 4096 seems to be the sweet spot for prefetching, since higher values start to reduce performance instead.
-                // Since prefetch doesn't affect program behavior besides performance, we also don't have to care about out-of-bounds pointers.
-                _mm_prefetch(reinterpret_cast<const char*>(ptr + 4096), _MM_HINT_NTA);
-                auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
+            if constexpr (CSig != cmp_type::none) {
+                auto [bytes, masks] = load_sig_256(sig);
+                bsig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(bytes.begin())));
+                msig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(masks.begin())));
+            }
 
-                auto tmp = mem;
-                if constexpr (FirstMask)
-                    tmp = _mm256_and_si256(tmp, first_masks);
+            static constexpr uintptr_t PAGE_MASK = ~static_cast<uintptr_t>(4095);
+            // The "danger zone". If we read past here, a segfault can occur.
+            auto end_page = (reinterpret_cast<uintptr_t>(end) + 4095) | PAGE_MASK;
 
-                uint32_t mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(tmp, first_bytes));
+            end -= sig.size() - twobyte_idx - 1;
+            auto ptr = begin + twobyte_idx;
 
-                if constexpr (SecondByteKind != second_byte_kind::none) {
-                    tmp = mem;
-                    if constexpr (SecondByteKind == second_byte_kind::masked)
-                        tmp = _mm256_and_si256(tmp, second_masks);
+            // First do a partial compare up to the next 32-byte-aligned position. If `ptr` is already aligned, no harm done.
+            {
+                // This can't read past `end_page`, because we would fall back to normal scan if the search space was that small.
+                auto mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
 
-                    uint32_t mask2 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(tmp, second_bytes));
-                    mask &= mask2 >> 1 | (1u << 31); // pretend second byte matched at the last position in the vector
+                uint32_t mask;
+                if constexpr (C0 == cmp_type::masked)
+                    mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_and_si256(mem, m0), b0));
+                else
+                    mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(mem, b0));
+
+                mask &= _bzhi_u32(0xFFFFFFFF, 32 - (reinterpret_cast<uintptr_t>(ptr) | 31));
+
+                if constexpr (C1 != cmp_type::none) {
+                    uint32_t mask1;
+                    if constexpr (C1 == cmp_type::masked)
+                        mask1 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_and_si256(mem, m1), b1));
+                    else
+                        mask1 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(mem, b1));
+
+                    mask &= (mask1 >> 1) | (1u << 31); // avoid a second memory read
                 }
 
+                // `mask` is a bitmask telling us which positions matched the first two bytes.
+                // Iterate over each set bit using BMI intrinsics, and do further checks for a match.
                 while (mask) {
                     auto match = ptr + _tzcnt_u32(mask);
 
-                    if constexpr (CmpType == cmp_type::none)
-                        return match;
+                    // match cannot reach past the end
 
-                    auto match_mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(match + 2));
-                    match_mem = _mm256_and_si256(match_mem, sig_masks);
-                    if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_mem, sig_bytes)) == 0xFFFFFFFF) {
-                        if constexpr (CmpType == cmp_type::vector)
+                    if constexpr (CSig == cmp_type::none)
+                        return match; // twobyte_idx is always 0 when CSig is `none`
+
+                    match -= twobyte_idx;
+
+                    auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
+                    if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) == 0xFFFFFFFF) {
+                        if constexpr (!SigExt)
                             return match;
 
-                        if (std::equal(ext_sig.begin(), ext_sig.end(), match + 2 + 32))
+                        if (std::equal(sig.begin() + 32, sig.end(), match + 32))
                             return match;
                     }
 
-                    mask = _blsr_u64(mask);
+                    mask = _blsr_u32(mask);
+                }
+            }
+
+            ptr = reinterpret_cast<const std::byte*>((reinterpret_cast<uintptr_t>(ptr) | 31) + 1);
+
+            for (; ptr < end; ptr += 32) {
+                auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
+
+                uint32_t mask;
+                if constexpr (C0 == cmp_type::masked)
+                    mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_and_si256(mem, m0), b0));
+                else
+                    mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(mem, b0));
+
+                if constexpr (C1 != cmp_type::none) {
+                    uint32_t mask1;
+                    if constexpr (C1 == cmp_type::masked)
+                        mask1 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_and_si256(mem, m1), b1));
+                    else
+                        mask1 = _mm256_movemask_epi8(_mm256_cmpeq_epi8(mem, b1));
+
+                    mask &= (mask1 >> 1) | (1u << 31); // avoid a second memory read
+                }
+
+                // `mask` is a bitmask telling us which positions matched the first two bytes.
+                // Iterate over each set bit using BMI intrinsics, and do further checks for a match.
+                while (mask) {
+                    auto match = ptr + _tzcnt_u32(mask);
+
+                    if (match > end)
+                        return nullptr;
+
+                    if constexpr (CSig == cmp_type::none)
+                        return match; // twobyte_idx is always 0 when CSig is `none`
+
+                    match -= twobyte_idx;
+
+                    if constexpr (!SigExt) {
+                        // If the signature is less than 32 bytes, we could still read past `end_page`.
+                        // TODO: Probably better to adjust `end` more and just do this logic at the end of the function, to avoid an extra branch
+                        //if (((reinterpret_cast<uintptr_t>(match) + 31) | PAGE_MASK) < end_page) {
+                        if (true) {
+                            auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
+                            if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) == 0xFFFFFFFF)
+                                return match;
+                        } else {
+                            if (std::equal(sig.begin(), sig.end(), match))
+                                return match;
+                        }
+                    } else {
+                        auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
+                        if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) != 0xFFFFFFFF)
+                            continue;
+
+                        if (std::equal(sig.begin() + 32, sig.end(), match + 32))
+                            return match;
+                    }
+
+                    mask = _blsr_u32(mask);
                 }
             }
 
@@ -112,100 +209,74 @@ namespace mnem::internal {
     }
 
     const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig) {
-        // Benchmarks with synthetic data show that the normal scanner is consistently faster than the AVX2 scanner on buffers below 8kb.
-        // Currently unsure if this behavior varies across CPUs and vendors.
-        if (end - begin <= 8192)
+        auto twobyte_idx = find_twobyte_idx(sig);
+        //auto twobyte_idx = 0;
+
+        if (end - begin - twobyte_idx < 64) // pretty much not worth it if the buffer is that small
             return scan_impl_normal(begin, end, sig);
 
-        const size_t main_size = 2 + 32; // First two bytes and the extra 32
-
         // Strip bytes until they will fit into the AVX registers.
-        while (sig.back().mask() == std::byte{0} && sig.size() > main_size) {
+        while (sig.back().mask() == std::byte{0}) {
             sig = sig.subsig(0, sig.size() - 1);
             end--;
             // can't become empty
         }
 
-        bool first_mask = false;
-        second_byte_kind sbk = second_byte_kind::none;
-        cmp_type cmptype = cmp_type::none;
-        size_t read_size = 1; // How many bytes the main scan will read, used for adjusting end ptr
+        bool c0_masked = false;
+        cmp_type c1 = cmp_type::none;
+        bool csig = false;
+        bool sigext = false;
 
-        if (sig.container()[0].mask() != std::byte{0xFF})
-            first_mask = true;
+        if (sig[twobyte_idx].mask() != std::byte{0xFF})
+            c0_masked = true;
 
-        if (sig.container().size() > 1) {
-            read_size = 2;
-            auto second = sig.container()[1];
-
-            if (second.mask() == std::byte{0xFF})
-                sbk = second_byte_kind::full;
-            else if (second.mask() != std::byte{0})
-                sbk = second_byte_kind::masked;
-
-            if (sig.container().size() > 2) {
-                read_size = main_size;
-                cmptype = cmp_type::vector;
-
-                if (sig.container().size() > main_size) {
-                    read_size = sig.container().size();
-                    cmptype = cmp_type::extended;
-                }
-            }
+        if (twobyte_idx + 1 < sig.size()) {
+            auto mask1 = sig[twobyte_idx + 1].mask();
+            if (mask1 == std::byte{0xFF})
+                c1 = cmp_type::full;
+            else if (mask1 != std::byte{0})
+                c1 = cmp_type::masked;
         }
 
-        auto a_begin = align_ptr_up<32>(begin);
-        if (a_begin > begin) {
-            auto small_end = std::min(a_begin + sig.size() - 1, end);
-            auto ptr = std::search(begin, small_end, sig.begin(), sig.end());
-            if (ptr != small_end)
-                return ptr;
-        }
+        if (sig.size() > 2)
+            csig = true;
 
-        auto a_end = align_ptr<32>(end - (read_size - 1));
+        if (sig.size() > 32)
+            sigext = true;
 
         const std::byte* result = nullptr;
 
         // Dispatch to the correct scanner func using epic lambda chain
-        if (a_begin < a_end) {
-            auto dispatch_2 = [&]<bool FirstMask, second_byte_kind SecondByteKind> {
-                switch (cmptype) {
+        if (begin < end) {
+            auto dispatch_2 = [&]<cmp_type C0, cmp_type C1> {
+                if (csig) {
+                    if (sigext)
+                        result = do_scan_avx2_x1<C0, C1, cmp_type::full, true>(begin, end, sig, twobyte_idx);
+                    else
+                        result = do_scan_avx2_x1<C0, C1, cmp_type::full, false>(begin, end, sig, twobyte_idx);
+                } else {
+                    result = do_scan_avx2_x1<C0, C1, cmp_type::none, false>(begin, end, sig, twobyte_idx);
+                }
+            };
+
+            auto dispatch_1 = [&]<cmp_type C0> {
+                switch (c1) {
                     case cmp_type::none:
-                        result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::none>(a_begin, a_end, sig);
+                        dispatch_2.operator()<C0, cmp_type::none>();
                         break;
-                    case cmp_type::vector:
-                        result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::vector>(a_begin, a_end, sig);
+                    case cmp_type::masked:
+                        dispatch_2.operator()<C0, cmp_type::masked>();
                         break;
-                    case cmp_type::extended:
-                        result = avx2_main_scan<FirstMask, SecondByteKind, cmp_type::extended>(a_begin, a_end, sig);
-                        break;
-                }
-            };
-
-            auto dispatch_1 = [&]<bool FirstMask> {
-                switch (sbk) {
-                    case second_byte_kind::none:
-                        dispatch_2.template operator()<FirstMask, second_byte_kind::none>();
-                        break;
-                    case second_byte_kind::full:
-                        dispatch_2.template operator()<FirstMask, second_byte_kind::full>();
-                        break;
-                    case second_byte_kind::masked:
-                        dispatch_2.template operator()<FirstMask, second_byte_kind::masked>();
+                    case cmp_type::full:
+                        dispatch_2.operator()<C0, cmp_type::full>();
                         break;
                 }
             };
 
-            if (first_mask)
-                dispatch_1.operator()<true>();
+            if (c0_masked)
+                dispatch_1.operator()<cmp_type::masked>();
             else
-                dispatch_1.operator()<false>();
-        }
-
-        if (a_end < end && !result) {
-            auto ptr = std::search(a_end, end, sig.begin(), sig.end());
-            if (ptr != end)
-                return ptr;
+                dispatch_1.operator()<cmp_type::full>();
         }
 
         return result;

@@ -30,10 +30,12 @@ TEST(MnemosyneTests, ScannerTest) {
         mnem::memory_span range{buffer.get(), SIZE};
         mnem::scanner scanner{range};
 
-        auto result = scanner.scan_signature(mnem::make_signature<"00 01 02 03 04 05">());
+        auto result = scanner.scan_signature(mnem::make_signature<"00 01 02 03 04 05">(), static_cast<mnem::scan_mode>(i));
         EXPECT_NE(result, nullptr);
 
-        auto offset = result - buffer.get();
-        EXPECT_EQ(offset, EXPECTED_OFFSET);
+        if (result) {
+            auto offset = result - buffer.get();
+            EXPECT_EQ(offset, EXPECTED_OFFSET);
+        }
     }
 }

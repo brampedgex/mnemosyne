@@ -193,11 +193,10 @@ namespace mnem::internal {
                         }
                     } else {
                         auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
-                        if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) != 0xFFFFFFFF)
-                            continue;
-
-                        if (std::equal(sig.begin() + 32, sig.end(), match + 32))
-                            return match;
+                        if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) == 0xFFFFFFFF) {
+                            if (std::equal(sig.begin() + 32, sig.end(), match + 32))
+                                return match;
+                        }
                     }
 
                     mask = _blsr_u32(mask);

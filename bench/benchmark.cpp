@@ -27,7 +27,7 @@ static void benchmark(mnem::scan_mode mode) {
     for (size_t size = 16; size <= max_size; size <<= 1) {
         std::cout << mode_to_string(mode) << " scanner with " << size << " byte buffer... ";
 
-        auto sig = mnem::make_signature<"01 ?? 03 04 05 06 07 08 09 10 11 12 13 14 15 16">();
+        auto sig = mnem::make_signature<"01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16">();
 
         const size_t iterations = std::min(max_size * 40 / size, {0x100000});
         const int buffer_count = 8; // multiple buffers since the allocator can seem to cause the results to vary wildly
@@ -42,12 +42,12 @@ static void benchmark(mnem::scan_mode mode) {
             for (auto ptr = reinterpret_cast<uint64_t*>(buffer.get()); ptr < reinterpret_cast<uint64_t*>(buffer.get() + size); ptr++)
                 *ptr = dist(rng);
 
-            mnem::scanner scanner{ mnem::memory_span{ buffer.get(), size } };
+            mnem::scanner scanner{ mnem::memory_span{ buffer.get(), size }, mode };
             const size_t itersPerBuffer = iterations / buffer_count;
 
             auto start = std::chrono::steady_clock::now();
             for (int j = 0; j < itersPerBuffer; j++)
-                [[maybe_unused]] auto _ = scanner.scan_signature(sig, mode);
+                [[maybe_unused]] auto _ = scanner.scan_signature(sig);
             auto end = std::chrono::steady_clock::now();
 
             totalTime += std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();

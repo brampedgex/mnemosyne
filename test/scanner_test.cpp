@@ -27,10 +27,10 @@ TEST(MnemosyneTests, ScannerTest) {
         buffer[EXPECTED_OFFSET + 0x04] = std::byte{0x04};
         buffer[EXPECTED_OFFSET + 0x05] = std::byte{0x05};
 
-        mnem::memory_span range{buffer.get(), SIZE};
-        mnem::scanner scanner{range};
+        mnem::memory_span range{ buffer.get(), SIZE };
+        mnem::scanner scanner{ range, static_cast<mnem::scan_mode>(i) };
 
-        auto result = scanner.scan_signature(mnem::make_signature<"00 01 02 03 04 05">(), static_cast<mnem::scan_mode>(i));
+        auto result = scanner.scan_signature(mnem::make_signature<"00 01 02 03 04 05">());
         EXPECT_NE(result, nullptr);
 
         if (result) {

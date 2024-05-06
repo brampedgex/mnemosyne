@@ -94,7 +94,12 @@ namespace mnem::internal {
             // The "danger zone". If we read past here, a segfault can occur.
             auto end_page = (reinterpret_cast<uintptr_t>(end) + 4095) | PAGE_MASK;
 
-            end -= sig.size() - twobyte_idx - 1;
+            if constexpr (CSig != cmp_type::none && !SigExt) {
+                // Ensure the main scan can't read past end_page.
+                end -= 32 - twobyte_idx - 1;
+            } else {
+                end -= sig.size() - twobyte_idx - 1;
+            }
             auto ptr = begin + twobyte_idx;
 
             // First do a partial compare up to the next 32-byte-aligned position. If `ptr` is already aligned, no harm done.
@@ -179,18 +184,11 @@ namespace mnem::internal {
 
                     match -= twobyte_idx;
 
+                    // TODO: Move the constexpr if inside, I'm too tired.
                     if constexpr (!SigExt) {
-                        // If the signature is less than 32 bytes, we could still read past `end_page`.
-                        // TODO: Probably better to adjust `end` more and just do this logic at the end of the function, to avoid an extra branch
-                        //if (((reinterpret_cast<uintptr_t>(match) + 31) | PAGE_MASK) < end_page) {
-                        if (true) {
-                            auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
-                            if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) == 0xFFFFFFFF)
-                                return match;
-                        } else {
-                            if (std::equal(sig.begin(), sig.end(), match))
-                                return match;
-                        }
+                        auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
+                        if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) == 0xFFFFFFFF)
+                            return match;
                     } else {
                         auto match_vec = _mm256_and_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(match)), msig);
                         if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_vec, bsig)) == 0xFFFFFFFF) {
@@ -203,13 +201,22 @@ namespace mnem::internal {
                 }
             }
 
+            // Scan the extra bytes at the end
+            if constexpr (CSig != cmp_type::none && !SigExt) {
+                end += twobyte_idx;
+
+                // TODO: This technically scans more bytes than it has to.
+                auto result = std::search(end, end + 31, sig.begin(), sig.end());
+                if (result != end + 31)
+                    return result;
+            }
+
             return nullptr;
         }
     }
 
     const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig) {
         auto twobyte_idx = find_twobyte_idx(sig);
-        //auto twobyte_idx = 0;
 
         if (end - begin - twobyte_idx < 64) // pretty much not worth it if the buffer is that small
             return scan_impl_normal(begin, end, sig);

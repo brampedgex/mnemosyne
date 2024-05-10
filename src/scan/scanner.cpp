@@ -1,7 +1,15 @@
 #include "scanner_impls.hpp"
 #include "../cpuid.hpp"
 
-#include <iostream>
+#include <cstring>
+
+namespace {
+    auto find_byte(const std::byte* first, const std::byte* last, std::byte byte) {
+        // libstdc++'s std::find doesn't use memchr, unlike microsoft's implementation. Use memchr directly instead.
+        return reinterpret_cast<const std::byte*>(
+            std::memchr(first, static_cast<int>(byte), last - first));
+    }
+}
 
 namespace mnem {
     scan_mode detect_scan_mode() {
@@ -29,16 +37,15 @@ namespace mnem::internal {
         if (first_elem.mask() == std::byte{0xFF}) {
             const auto first = first_elem.byte();
 
-            // Take advantage of the standard library's potential optimizations for finding scalars in a contiguous memory range.
             const auto upper_bound = end - (sig.size() - 1);
-            auto ptr = std::find(begin, upper_bound, first);
+            auto ptr = find_byte(begin, upper_bound, first);
 
-            while (ptr != upper_bound) [[likely]] {
+            while (ptr) [[likely]] {
                 if (std::equal(sig.begin(), sig.end(), ptr)) [[unlikely]] {
                     return ptr;
                 }
 
-                ptr = std::find(ptr + 1, upper_bound, first);
+                ptr = find_byte(ptr + 1, upper_bound, first);
             }
 
             return nullptr;

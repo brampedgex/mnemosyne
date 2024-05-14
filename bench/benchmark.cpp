@@ -21,7 +21,7 @@ static std::string_view mode_to_string(mnem::scan_mode mode) {
     }
 }
 
-static void benchmark(mnem::scan_mode mode) {
+static void benchmark(mnem::scan_mode mode, mnem::scan_align align) {
     static constexpr size_t max_size = 0x40000000; // 1G, TODO a way to change this
 
     for (size_t size = 16; size <= max_size; size <<= 1) {
@@ -47,7 +47,7 @@ static void benchmark(mnem::scan_mode mode) {
 
             auto start = std::chrono::steady_clock::now();
             for (int j = 0; j < itersPerBuffer; j++)
-                [[maybe_unused]] auto _ = scanner.scan_signature(sig);
+                [[maybe_unused]] auto _ = scanner.scan_signature(sig, align);
             auto end = std::chrono::steady_clock::now();
 
             totalTime += std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
@@ -65,7 +65,7 @@ int main() {
     auto fastest_mode = mnem::detect_scan_mode();
     std::cout << "Highest supported mode: " << mode_to_string(fastest_mode) << '\n';
 
-    benchmark(mnem::scan_mode::avx2);
+    benchmark(mnem::scan_mode::normal, mnem::scan_align::x16);
 
     //for (int mode = static_cast<int>(mnem::scan_mode::normal); mode <= static_cast<int>(fastest_mode); mode++) {
     //    benchmark(static_cast<mnem::scan_mode>(mode));

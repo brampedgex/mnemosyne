@@ -15,6 +15,6 @@ namespace mnem::internal {
         return reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(ptr) + ALIGN_MASK) & ~ALIGN_MASK);
     }
 
-    const std::byte* scan_impl_normal(const std::byte* begin, const std::byte* end, signature sig);
-    const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig);
+    const std::byte* scan_impl_normal(const std::byte* begin, const std::byte* end, signature sig, scan_align align);
+    const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig, scan_align align);
 }

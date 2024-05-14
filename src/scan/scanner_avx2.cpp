@@ -1,6 +1,5 @@
 #include "scanner_impls.hpp"
 
-#include <iostream>
 #include <bit>
 
 #include <immintrin.h>
@@ -12,12 +11,6 @@ namespace mnem::internal {
             full,   // Fully unmasked
             masked  // Partially masked
         };
-
-        //enum class cmp_type {
-        //    none,       // Don't compare
-        //    vector,     // Do vectorized compare
-        //    extended,   // Do vectorized compare, then std::equal
-        //};
 
         // Find the optimal index in the two-byte search.
         size_t find_twobyte_idx(mnem::signature sig) {
@@ -215,11 +208,11 @@ namespace mnem::internal {
         }
     }
 
-    const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig) {
+    const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig, scan_align align) {
         auto twobyte_idx = find_twobyte_idx(sig);
 
         if (end - begin - twobyte_idx < 64) // pretty much not worth it if the buffer is that small
-            return scan_impl_normal(begin, end, sig);
+            return scan_impl_normal(begin, end, sig, align);
 
         // Strip bytes until they will fit into the AVX registers.
         while (sig.back().mask() == std::byte{0}) {

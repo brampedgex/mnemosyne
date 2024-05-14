@@ -2,7 +2,6 @@
 #include "../cpuid.hpp"
 
 #include <cstring>
-#include <execution>
 
 namespace mnem {
     scan_mode detect_scan_mode() {
@@ -91,7 +90,7 @@ namespace mnem::internal {
             return nullptr;
         }
 
-        auto iter = std::search(std::execution::unseq, begin, end, sig.begin(), sig.end());
+        auto iter = std::search(begin, end, sig.begin(), sig.end());
         return iter == end ? nullptr : iter;
     }
 

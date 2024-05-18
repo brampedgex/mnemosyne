@@ -25,29 +25,36 @@ namespace mnem {
 
     /// General-purpose wrapper for using custom constructors/destructors.
     /// Prevents devirtualization and gives control over constructors/destructors with the wrapper_traits class.
-    template <class T>
+    template <class T, class Traits = wrapper_traits<T>>
     class wrap {
     public:
         explicit wrap(no_construct_t) {}
 
         ~wrap() {
-            wrapper_traits<T>::destroy(this->get());
+            Traits::destroy(this->get());
         }
 
         wrap() {
-            wrapper_traits<T>::construct(this->buffer());
+            Traits::construct(this->buffer());
         }
 
-        wrap(const wrap<T>& copy) {
-            wrapper_traits<T>::construct(this->buffer(), *copy);
+        template <class Traits2>
+        wrap(const wrap<T, Traits2>& copy) {
+            Traits::construct(this->buffer(), *copy);
         }
 
-        wrap(wrap<T>&& move) noexcept(false) {
-            wrapper_traits<T>::construct(this->buffer(), *std::move(move));
+        template <class Traits2>
+        wrap(wrap<T, Traits2>&& move) noexcept(false) {
+            Traits::construct(this->buffer(), *std::move(move));
         }
 
         explicit wrap(std::in_place_t, auto&&... args) {
-            wrapper_traits<T>::construct(this->buffer(), std::forward<decltype(args)>(args)...);
+            Traits::construct(this->buffer(), std::forward<decltype(args)>(args)...);
+        }
+
+        void reset(auto&&... args) {
+            Traits::destroy(this->get());
+            Traits::construct(this->buffer(), std::forward<decltype(args)>(args)...);
         }
 
         [[nodiscard]] std::byte* buffer() {

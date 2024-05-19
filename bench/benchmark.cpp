@@ -65,7 +65,7 @@ int main() {
     auto fastest_mode = mnem::detect_scan_mode();
     std::cout << "Highest supported mode: " << mode_to_string(fastest_mode) << '\n';
 
-    benchmark(mnem::scan_mode::normal, mnem::scan_align::x16);
+    benchmark(mnem::scan_mode::avx2, mnem::scan_align::x16);
 
     //for (int mode = static_cast<int>(mnem::scan_mode::normal); mode <= static_cast<int>(fastest_mode); mode++) {
     //    benchmark(static_cast<mnem::scan_mode>(mode));

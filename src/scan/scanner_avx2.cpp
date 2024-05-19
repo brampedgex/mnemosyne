@@ -42,9 +42,8 @@ namespace mnem::internal {
         }
 
         // Load signature bytes and masks into two 256-bit registers
-        std::pair<std::array<std::byte, 32>, std::array<std::byte, 32>> load_sig_256(std::span<const mnem::sig_element> sig) {
-            std::array<std::byte, 32> bytes{};
-            std::array<std::byte, 32> masks{};
+        std::pair<std::array<std::byte, 32>, std::array<std::byte, 32>> load_sig_256_32(mnem::signature sig) {
+            std::array<std::byte, 32> bytes{}, masks{};
 
             for (size_t i = 0; i < 32; i++) {
                 if (i < sig.size()) {
@@ -55,6 +54,24 @@ namespace mnem::internal {
                 } else {
                     bytes[i] = std::byte{0};
                     masks[i] = std::byte{0};
+                }
+            }
+
+            return { bytes, masks };
+        }
+
+        std::pair<std::array<std::byte, 32>, std::array<std::byte, 32>> load_sig_256_16(mnem::signature sig) {
+            std::array<std::byte, 32> bytes{}, masks{};
+
+            for (size_t i = 0; i < 16; i++) {
+                if (i < sig.size()) {
+                    auto byte = sig[i].byte();
+                    auto mask = sig[i].mask();
+                    bytes[i+16] = bytes[i] = byte & mask;
+                    bytes[i+16] = masks[i] = mask;
+                } else {
+                    bytes[i+16] = bytes[i] = std::byte{0};
+                    masks[i+16] = masks[i] = std::byte{0};
                 }
             }
 
@@ -78,7 +95,8 @@ namespace mnem::internal {
             }
 
             if constexpr (CSig != cmp_type::none) {
-                auto [bytes, masks] = load_sig_256(sig);
+                // The first two bytes are also included in this array
+                auto [bytes, masks] = load_sig_256_32(sig);
                 bsig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(bytes.begin())));
                 msig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(masks.begin())));
             }
@@ -206,20 +224,80 @@ namespace mnem::internal {
 
             return nullptr;
         }
+
+        template <bool SigExt>
+        const std::byte* do_scan_avx2_x16(const std::byte* begin, const std::byte* end, mnem::signature sig) {
+            // TODO: Experiment with another two registers filled with 16 more bytes from the sig.
+            __m256i bsig, msig;
+
+            // Fill two registers with the first 16 bytes and masks of the signature.
+            {
+                auto [bytes, masks] = load_sig_256_16(sig);
+                bsig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(bytes.begin())));
+                msig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(masks.begin())));
+            }
+
+            // FIXME: We also need to handle when the sig is smaller than register size...
+            end -= sig.size() - 1;
+
+            if (reinterpret_cast<uintptr_t>(begin) % 32) {
+                // TODO: Maybe do this with SIMD too, but it probably won't help performance that much.
+                if (std::equal(sig.begin(), sig.end(), begin))
+                    return begin;
+
+                // Begin should be at least 16-byte aligned. (right?)
+                begin += 16;
+            }
+
+            for (auto ptr = begin; ptr < end; ptr += 32) {
+                auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
+                
+                // Emulate a comparison of two 128-bit values
+                uint32_t mask = _mm256_movemask_epi8(_mm256_cmpeq_epi64(_mm256_and_si256(mem, msig), bsig));
+                mask &= mask >> 8;
+
+                // Manually testing bits like this seems to be faster than a while loop 
+                if (!mask)
+                    continue;
+
+                if (mask & 0x00000001) {
+                    if constexpr (SigExt) {
+                        if (std::equal(sig.begin() + 16, sig.end(), ptr + 16))
+                            return ptr;
+                    } else {
+                        return ptr;
+                    }
+                }
+
+                if (mask & 0x00010000) {
+                    if constexpr (SigExt) {
+                        if (std::equal(sig.begin() + 16, sig.end(), ptr + 32))
+                            return ptr;
+                    } else {
+                        return ptr;
+                    }
+                }
+            }
+
+            return nullptr;
+        }
     }
 
     const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig, scan_align align) {
+        if (align == scan_align::x16) {
+            if (end - begin < 64)
+                return scan_impl_normal(begin, end, sig, align);
+            
+            if (sig.size() > 16)
+                return do_scan_avx2_x16<true>(begin, end, sig);
+            else
+                return do_scan_avx2_x16<false>(begin, end, sig);
+        }
+
         auto twobyte_idx = find_twobyte_idx(sig);
 
         if (end - begin - twobyte_idx < 64) // pretty much not worth it if the buffer is that small
             return scan_impl_normal(begin, end, sig, align);
-
-        // Strip bytes until they will fit into the AVX registers.
-        while (sig.back().mask() == std::byte{0}) {
-            sig = sig.subsig(0, sig.size() - 1);
-            end--;
-            // can't become empty
-        }
 
         bool c0_masked = false;
         cmp_type c1 = cmp_type::none;

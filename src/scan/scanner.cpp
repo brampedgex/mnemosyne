@@ -26,10 +26,6 @@ namespace mnem::internal {
         }
 
         const std::byte* do_scan_normal_x16(const std::byte* begin, const std::byte* end, signature sig) {
-            // Align begin to the next 16-byte boundary.
-            begin = reinterpret_cast<const std::byte*>(
-                (reinterpret_cast<uintptr_t>(begin) + 15) & ~static_cast<uintptr_t>(15));
-
             // Make `end` the upper bound for where the first byte can be located.
             end -= sig.size() - 1;
 
@@ -63,12 +59,6 @@ namespace mnem::internal {
     }
 
     const std::byte* scan_impl_normal(const std::byte* begin, const std::byte* end, signature sig, scan_align align) {
-        while (sig.back().mask() == std::byte{0}) {
-            sig = sig.subsig(0, sig.size() - 1);
-            end--;
-            // the sig cannot be empty. like that LITERALLY cannot happen. that would be stupid. dumb even.
-        }
-
         if (align == scan_align::x16)
             return do_scan_normal_x16(begin, end, sig);
 
@@ -95,7 +85,7 @@ namespace mnem::internal {
     }
 
     const std::byte* do_scan(const std::byte* begin, const std::byte* end, signature sig, scan_mode mode, scan_align align) {
-        // TODO: Cover this in a test because it broke scanning until now
+        // TODO: Cover this logic in a test because it broke scanning until now
         size_t left_stripped = 0;
         if (align == scan_align::x1) {
             while (sig.front().mask() == std::byte{0}) {
@@ -103,8 +93,18 @@ namespace mnem::internal {
                 sig = sig.subsig(1);
                 begin++;
                 if (sig.empty())
-                    return (begin > end) ? nullptr : begin;
+                    return (begin > end) ? nullptr : begin - left_stripped;
             }
+        } else {
+            // Align the begin ptr.
+            begin = reinterpret_cast<const std::byte*>(
+                (reinterpret_cast<uintptr_t>(begin) + 15) & ~static_cast<uintptr_t>(15));
+        }
+
+        while (sig.back().mask() == std::byte{0}) {
+            sig = sig.subsig(0, sig.size() - 1);
+            end--;
+            // We know there must be at least one non-masked byte in the signature, so no need to check if sig is empty
         }
 
         if (begin >= end)

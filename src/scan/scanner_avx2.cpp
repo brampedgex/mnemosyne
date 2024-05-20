@@ -237,7 +237,7 @@ namespace mnem::internal {
                 msig = _mm256_loadu_si256(reinterpret_cast<__m256i*>(std::to_address(masks.begin())));
             }
 
-            // FIXME: We also need to handle when the sig is smaller than register size...
+            // Since the comparison works differently from the x1 scanner, we don't need to worry if the sig is smaller than the register size.
             end -= sig.size() - 1;
 
             if (reinterpret_cast<uintptr_t>(begin) % 32) {
@@ -272,7 +272,7 @@ namespace mnem::internal {
                 if (mask & 0x00010000) {
                     if (ptr + 16 >= end)
                         return nullptr;
-                    
+
                     if constexpr (SigExt) {
                         if (std::equal(sig.begin() + 16, sig.end(), ptr + 32))
                             return ptr;

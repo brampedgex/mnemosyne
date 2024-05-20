@@ -9,7 +9,6 @@
 
 namespace mnem {
     // TODO: Execution policies to give the user better control over threading
-    // TODO: Scan alignment for results we know are aligned in memory
     // TODO: Variants supporting multiple results and batches of signatures
     // TODO: Scan for scalar types and simple byte arrays
     // TODO: Result type instead of pointer

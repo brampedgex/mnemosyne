@@ -270,6 +270,9 @@ namespace mnem::internal {
                 }
 
                 if (mask & 0x00010000) {
+                    if (ptr + 16 >= end)
+                        return nullptr;
+                    
                     if constexpr (SigExt) {
                         if (std::equal(sig.begin() + 16, sig.end(), ptr + 32))
                             return ptr;
@@ -283,21 +286,11 @@ namespace mnem::internal {
         }
     }
 
-    const std::byte* scan_impl_avx2(const std::byte* begin, const std::byte* end, signature sig, scan_align align) {
-        if (align == scan_align::x16) {
-            if (end - begin < 64)
-                return scan_impl_normal(begin, end, sig, align);
-            
-            if (sig.size() > 16)
-                return do_scan_avx2_x16<true>(begin, end, sig);
-            else
-                return do_scan_avx2_x16<false>(begin, end, sig);
-        }
-
+    const std::byte* scan_impl_avx2_x1(const std::byte* begin, const std::byte* end, signature sig) {
         auto twobyte_idx = find_twobyte_idx(sig);
 
         if (end - begin - twobyte_idx < 64) // pretty much not worth it if the buffer is that small
-            return scan_impl_normal(begin, end, sig, align);
+            return scan_impl_normal_x1(begin, end, sig);
 
         bool c0_masked = false;
         cmp_type c1 = cmp_type::none;
@@ -357,5 +350,15 @@ namespace mnem::internal {
         }
 
         return result;
+    }
+
+    const std::byte* scan_impl_avx2_x16(const std::byte* begin, const std::byte* end, signature sig) {
+        if (end - begin < 64)
+            return scan_impl_normal_x16(begin, end, sig);
+        
+        if (sig.size() > 16)
+            return do_scan_avx2_x16<true>(begin, end, sig);
+        else
+            return do_scan_avx2_x16<false>(begin, end, sig);
     }
 }

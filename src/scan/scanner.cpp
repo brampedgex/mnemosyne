@@ -24,44 +24,9 @@ namespace mnem::internal {
             return reinterpret_cast<const std::byte*>(
                 std::memchr(first, static_cast<int>(byte), last - first));
         }
-
-        const std::byte* do_scan_normal_x16(const std::byte* begin, const std::byte* end, signature sig) {
-            // Make `end` the upper bound for where the first byte can be located.
-            end -= sig.size() - 1;
-
-            const auto first_elem = sig.front();
-            if (first_elem.mask() == std::byte{0xFF}) {
-                const auto first = first_elem.byte();
-
-                auto ptr = find_byte(begin, end, first);
-
-                while (ptr) [[likely]] {
-                    if (reinterpret_cast<uintptr_t>(ptr) % 16 == 0) [[unlikely]] {
-                        if (std::equal(sig.begin(), sig.end(), ptr)) [[unlikely]] {
-                            return ptr;
-                        }
-                    }
-
-                    ptr = find_byte(ptr + 1, end, first);
-                }
-
-                return nullptr;
-            }
-
-            for (auto ptr = begin; ptr < end; ptr += 16) {
-                if (std::equal(sig.begin(), sig.end(), ptr)) [[unlikely]] {
-                    return ptr;
-                }
-            }
-
-            return nullptr;
-        }
     }
 
-    const std::byte* scan_impl_normal(const std::byte* begin, const std::byte* end, signature sig, scan_align align) {
-        if (align == scan_align::x16)
-            return do_scan_normal_x16(begin, end, sig);
-
+    const std::byte* scan_impl_normal_x1(const std::byte* begin, const std::byte* end, signature sig) {
         const auto first_elem = sig.front();
         if (first_elem.mask() == std::byte{0xFF}) {
             const auto first = first_elem.byte();
@@ -84,6 +49,38 @@ namespace mnem::internal {
         return iter == end ? nullptr : iter;
     }
 
+    const std::byte* scan_impl_normal_x16(const std::byte* begin, const std::byte* end, signature sig) {
+        // Make `end` the upper bound for where the first byte can be located.
+        end -= sig.size() - 1;
+
+        const auto first_elem = sig.front();
+        if (first_elem.mask() == std::byte{0xFF}) {
+            const auto first = first_elem.byte();
+
+            auto ptr = find_byte(begin, end, first);
+
+            while (ptr) [[likely]] {
+                if (reinterpret_cast<uintptr_t>(ptr) % 16 == 0) [[unlikely]] {
+                    if (std::equal(sig.begin(), sig.end(), ptr)) [[unlikely]] {
+                        return ptr;
+                    }
+                }
+
+                ptr = find_byte(ptr + 1, end, first);
+            }
+
+            return nullptr;
+        }
+
+        for (auto ptr = begin; ptr < end; ptr += 16) {
+            if (std::equal(sig.begin(), sig.end(), ptr)) [[unlikely]] {
+                return ptr;
+            }
+        }
+
+        return nullptr;
+    }
+
     const std::byte* do_scan(const std::byte* begin, const std::byte* end, signature sig, scan_mode mode, scan_align align) {
         // TODO: Cover this logic in a test because it broke scanning until now
         size_t left_stripped = 0;
@@ -96,9 +93,7 @@ namespace mnem::internal {
                     return (begin > end) ? nullptr : begin - left_stripped;
             }
         } else {
-            // Align the begin ptr.
-            begin = reinterpret_cast<const std::byte*>(
-                (reinterpret_cast<uintptr_t>(begin) + 15) & ~static_cast<uintptr_t>(15));
+            begin = align_ptr_up<16>(begin);
         }
 
         while (sig.back().mask() == std::byte{0}) {
@@ -111,12 +106,27 @@ namespace mnem::internal {
             return nullptr;
 
         const std::byte* result;
-        switch (mode) {
-            case scan_mode::normal:
-            default:
-                result = scan_impl_normal(begin, end, sig, align);
-            case scan_mode::avx2:
-                result = scan_impl_avx2(begin, end, sig, align);
+
+        if (align == scan_align::x1) {
+            switch (mode) {
+                case scan_mode::normal:
+                default:
+                    result = scan_impl_normal_x1(begin, end, sig);
+                    break;
+                case scan_mode::avx2:
+                    result = scan_impl_avx2_x1(begin, end, sig);
+                    break;
+            }
+        } else {
+            switch (mode) {
+                case scan_mode::normal:
+                default:
+                    result = scan_impl_normal_x16(begin, end, sig);
+                    break;
+                case scan_mode::avx2:
+                    result = scan_impl_avx2_x16(begin, end, sig);
+                    break;
+            }
         }
 
         return result ? result - left_stripped : nullptr;

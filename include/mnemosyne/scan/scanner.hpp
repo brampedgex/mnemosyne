@@ -6,11 +6,9 @@
 #include "../core/memory_range.hpp"
 
 #include <algorithm>
-#include <execution>
 
 namespace mnem {
     // TODO: Execution policies to give the user better control over threading
-    // TODO: Scan alignment for results we know are aligned in memory
     // TODO: Variants supporting multiple results and batches of signatures
     // TODO: Scan for scalar types and simple byte arrays
     // TODO: Result type instead of pointer
@@ -40,14 +38,15 @@ namespace mnem {
     scan_mode detect_scan_mode();
 
     namespace internal {
-        const std::byte* do_scan(const std::byte* begin, const std::byte* end, signature sig, scan_mode mode);
+        const std::byte* do_scan(const std::byte* begin, const std::byte* end, signature sig, scan_mode mode, scan_align align);
 
-        inline std::byte* do_scan(std::byte* begin, std::byte* end, signature sig, scan_mode mode) {
+        inline std::byte* do_scan(std::byte* begin, std::byte* end, signature sig, scan_mode mode, scan_align align) {
             return const_cast<std::byte*>(do_scan( // rare const_cast use case?!?!?!
                     static_cast<const std::byte*>(begin),
                     static_cast<const std::byte*>(end),
                     sig,
-                    mode));
+                    mode,
+                    align));
         }
     }
 
@@ -56,7 +55,7 @@ namespace mnem {
     public:
         explicit scanner(Range range, scan_mode mode = detect_scan_mode()) noexcept : range_(std::move(range)), mode_(mode) {}
 
-        [[nodiscard]] memory_range_element_t<Range>* scan_signature(signature sig) const noexcept {
+        [[nodiscard]] memory_range_element_t<Range>* scan_signature(signature sig, scan_align align = scan_align::x1) const noexcept {
             if (sig.container().empty())
                 return nullptr;
 
@@ -64,7 +63,7 @@ namespace mnem {
                 if (std::distance(i.begin(), i.end()) < sig.size())
                     continue;
 
-                if (auto result = internal::do_scan(std::to_address(i.begin()), std::to_address(i.end()), sig, mode_); result)
+                if (auto result = internal::do_scan(std::to_address(i.begin()), std::to_address(i.end()), sig, mode_, align); result)
                     return result;
             }
 

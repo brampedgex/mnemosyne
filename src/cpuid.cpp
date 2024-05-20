@@ -19,12 +19,20 @@ static inline void cpuid(int cpuInfo[4], int leaf) {
     cpuInfo[3] = edx;
 }
 
+static inline void cpuidex(int cpuInfo[4], int leaf, int subleaf) {
+    __cpuid_count(leaf, subleaf, cpuInfo[0], cpuInfo[1], cpuInfo[2], cpuInfo[3]);
+}
+
 #else
 
 #include <intrin.h>
 
 static inline void cpuid(int cpuInfo[4], int leaf) {
     __cpuid(cpuInfo, leaf);
+}
+
+static inline void cpuidex(int cpuInfo[4], int leaf, int subleaf) {
+    __cpuidex(cpuInfo, leaf, subleaf);
 }
 
 #endif
@@ -42,7 +50,7 @@ namespace {
             nIds = cpui[0];
 
             for (int i = 0; i <= nIds; ++i) {
-                __cpuidex(cpui.data(), i, 0);
+                cpuidex(cpui.data(), i, 0);
                 data.push_back(cpui);
             }
 
@@ -73,7 +81,7 @@ namespace {
             nExIds = cpui[0];
 
             for (int i = 0x80000000; i <= nExIds; ++i) {
-                __cpuidex(cpui.data(), i, 0);
+                cpuidex(cpui.data(), i, 0);
                 extdata.push_back(cpui);
             }
 

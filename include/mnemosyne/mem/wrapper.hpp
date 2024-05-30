@@ -11,6 +11,7 @@ namespace mnem {
     /// Tag used to prevent the initialization of a wrap<T> object.
     constexpr no_construct_t no_construct;
 
+    /// Provides a default destructor 
     template <class T>
     struct wrapper_default_destroy {
         static void destroy(T* obj) requires requires { obj->~T(); } {
@@ -118,6 +119,12 @@ namespace mnem {
     private:
         alignas(alignof(T)) std::byte buffer_[sizeof(T)]{};
     };
+
+    template <class T, class Traits = wrapper_traits<T>>
+    requires std::move_constructible<wrap<T, Traits>>
+    auto make_wrap(auto&&... args) {
+        return wrap<T, Traits>{ std::in_place, std::forward<decltype(args)>(args)... };
+    }
 }
 
 #endif

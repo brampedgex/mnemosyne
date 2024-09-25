@@ -66,6 +66,14 @@ namespace mnem {
             Traits::construct(this->buffer(), *std::move(move));
         }
 
+        [[nodiscard]] std::byte* buffer() {
+            return this->buffer_;
+        }
+
+        [[nodiscard]] const std::byte* buffer() const {
+            return this->buffer_;
+        }
+
         explicit wrap(std::in_place_t, auto&&... args) requires requires { Traits::construct(this->buffer(), std::forward<decltype(args)>(args)...); } {
             Traits::construct(this->buffer(), std::forward<decltype(args)>(args)...);
         }
@@ -74,14 +82,6 @@ namespace mnem {
         void emplace(auto&&... args) requires requires { Traits::construct(this->buffer(), std::forward<decltype(args)>(args)...); } {
             Traits::destroy(this->get());
             Traits::construct(this->buffer(), std::forward<decltype(args)>(args)...);
-        }
-
-        [[nodiscard]] std::byte* buffer() {
-            return this->buffer_;
-        }
-
-        [[nodiscard]] const std::byte* buffer() const {
-            return this->buffer_;
         }
 
         [[nodiscard]] auto* get() {

@@ -3,6 +3,7 @@
 #define MNEMOSYNE_MEM_PROCESS_HPP
 
 #include <string_view>
+#include <string>
 #include <optional>
 
 #include "../core/memory_range.hpp"
